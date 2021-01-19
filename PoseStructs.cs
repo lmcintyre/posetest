@@ -21,7 +21,7 @@ namespace PoseTest
             [FieldOffset(80)] public short PartialSkeletonNum;
             [FieldOffset(104)] public PartialSkeleton* PartialSkeletons;
             
-            public static RenderSkeleton* FromActor(PlayerCharacter p)
+            public static RenderSkeleton* FromActor(Actor p)
             {
                 if (p.Address == IntPtr.Zero) return null;
                 var drawObject = Marshal.ReadIntPtr(p.Address, ActorDrawObjectOffset);

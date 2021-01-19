@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Dalamud.Game.ClientState.Actors.Types;
 using Dalamud.Game.Command;
 using Dalamud.Hooking;
 using Dalamud.Plugin;
@@ -31,6 +33,7 @@ namespace PoseTest
         private Hook<GetBoneModelSpacePrototype> _getBoneModelSpaceHook;
 
         // UI
+        private int _selectedActorId = -1;
         private int _selectedPartialSkeleIndex = -1;
         private int _selectedBoneIndex = -1;
 
@@ -128,55 +131,63 @@ namespace PoseTest
                 }
             }
             
-            var localPlayer = pi.ClientState?.LocalPlayer;
-            if (localPlayer == null)
+            if (ImGui.Selectable("Deselect"))
             {
-                ImGui.End();
-                return;
-            }
-            var renderSkele = PoseStructs.RenderSkeleton.FromActor(localPlayer);
-            if (renderSkele == null)
-            {
-                ImGui.End();
-                return;
-            }
-
-            if (renderSkele != _lastRenderSkele)
-            {
-                _lastRenderSkele = renderSkele;
+                _selectedActorId = -1;
                 _selectedPartialSkeleIndex = -1;
                 _selectedBoneIndex = -1;
             }
-            
-            if (renderSkele->PartialSkeletons != null)
-            {
-                if (ImGui.Selectable("Deselect"))
-                {
-                    _selectedPartialSkeleIndex = -1;
-                    _selectedBoneIndex = -1;
-                }
-                for (int i = 0; i < renderSkele->PartialSkeletonNum; i++)
-                {
-                    var pSkl = renderSkele->PartialSkeletons[i];
-                    if (pSkl.Pose1 != null)
-                    {
-                        if (ImGui.Selectable(pSkl.Pose1->ToString()))
-                        {
-                            _selectedPartialSkeleIndex = i;
-                            _selectedBoneIndex = -1;
-                        }
 
-                        if (ImGui.IsItemHovered())
+            bool currentRenderSkeleFound = false;
+
+            foreach (var actor in pi.ClientState.Actors)
+            {
+                var thisRenderSkele = PoseStructs.RenderSkeleton.FromActor(actor);
+                if (thisRenderSkele == _lastRenderSkele)
+                    currentRenderSkeleFound = true;
+                
+                ImGui.Text($"{actor.Address.ToInt64():X}:{actor.ActorId:X}] - {actor.ObjectKind} - {actor.Name} - X{actor.Position.X} Y{actor.Position.Y} Z{actor.Position.Z} R{actor.Rotation}");
+                if (thisRenderSkele->PartialSkeletons != null)
+                {
+                    for (int i = 0; i < thisRenderSkele->PartialSkeletonNum; i++)
+                    {
+                        var pSkl = thisRenderSkele->PartialSkeletons[i];
+                        if (pSkl.Pose1 != null)
                         {
-                            DrawTooltip($"{renderSkele->PartialSkeletons[i]}");
+                            if (ImGui.Selectable(pSkl.Pose1->ToString()))
+                            {
+                                _selectedActorId = actor.ActorId;
+                                _selectedPartialSkeleIndex = i;
+                                _selectedBoneIndex = -1;
+                            }
+
+                            if (ImGui.IsItemHovered())
+                            {
+                                DrawTooltip($"{thisRenderSkele->PartialSkeletons[i]}");
+                            }
                         }
-                    }
-                }    
+                    }    
+                }
             }
+
+            if (!currentRenderSkeleFound && _lastRenderSkele != null)
+            {
+                _selectedPartialSkeleIndex = -1;
+                _selectedBoneIndex = -1;
+            }
+
+            // if (renderSkele != _lastRenderSkele)
+            // {
+            //     _lastRenderSkele = renderSkele;
+            //     _selectedPartialSkeleIndex = -1;
+            //     _selectedBoneIndex = -1;
+            // }
+            
             ImGui.End();
 
-            if (_selectedPartialSkeleIndex != -1)
+            if (_selectedActorId != -1 && _selectedPartialSkeleIndex != -1)
             {
+                var renderSkele = GetRenderSkeletonByActorId(_selectedActorId);
                 var pose = renderSkele->PartialSkeletons[_selectedPartialSkeleIndex].Pose1;
                 var selectedSkl = pose->SkeletonPointer;
                 ImGui.SetNextWindowSize(new Vector2(200, 600), ImGuiCond.FirstUseEver);
@@ -219,6 +230,20 @@ namespace PoseTest
 
                 ImGui.End();
             }
+        }
+
+        private PoseStructs.RenderSkeleton* GetRenderSkeletonByActorId(int actorId)
+        {
+            var actor = GetActorByActorId(actorId);
+            return actor == null ? null : PoseStructs.RenderSkeleton.FromActor(actor);
+        }
+
+        private Actor GetActorByActorId(int actorId)
+        {
+            if (pi?.ClientState?.Actors == null) return null;
+            
+            var actor = pi.ClientState.Actors.Where(a => a.ActorId == actorId).ToArray();
+            return actor.Any() ? actor.First() : null;
         }
 
         private void MouseoverBone(PoseStructs.hkVector4 translate, string name)
