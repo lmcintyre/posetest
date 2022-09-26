@@ -21,14 +21,12 @@ namespace PoseTest
 
         private const string commandName = "/posetest";
 
-        // private delegate IntPtr SetBoneXSpacePrototype(void* thisRenderSkeleton, ushort boneId, ref hkQsTransform, bool enableSecondary, bool enablePropagate);
         private delegate ulong SetBoneModelSpaceFfxivPrototype(PartialSkeleton* partialSkeleton, ushort boneId, hkQsTransform* transform, bool enableSecondary, bool enablePropagate);
         private Hook<SetBoneModelSpaceFfxivPrototype> _setBoneModelSpaceFfxivHook;
 
         private delegate hkQsTransform* CalculateBoneModelSpacePrototype(ref hkaPose pose, int boneIdx);
         private Hook<CalculateBoneModelSpacePrototype> _calculateBoneModelSpaceHook;
 
-        // It's also possible that this is hkaPose::SyncModel
         private delegate void SyncModelSpacePrototype(ref hkaPose pose);
         private Hook<SyncModelSpacePrototype> _syncModelSpaceHook;
 
@@ -41,8 +39,8 @@ namespace PoseTest
         private delegate void ExecuteSampleBlendJobPrototype(void* job);
         private Hook<ExecuteSampleBlendJobPrototype> _executeSampleBlendJobHook;
         
-        private delegate void SkeletonUpdaterJobFunc(void* updater, void* job);
-        private Hook<SkeletonUpdaterJobFunc> _skeletonUpdaterJobFuncHook;
+        private delegate void SkeletonUpdaterUpdate(void* updater, void* job);
+        private Hook<SkeletonUpdaterUpdate> _skeletonUpdaterUpdateHook;
         
         private delegate IntPtr HkaBlendJobBuild(void* job, void* skel, void* bonesOut, void* floatsOut, byte convertToModel, int numBones, int numFloats);
         private Hook<HkaBlendJobBuild> _hkaBlendJobBuildHook;
@@ -61,7 +59,7 @@ namespace PoseTest
         private bool _syncLocalSpacePaused = false;
         private bool _setToReferencePosePaused = false;
         private bool _executeSampleBlendJobPaused = false;
-        private bool _skeletonUpdaterJobFuncPaused = false;
+        private bool _skeletonUpdaterUpdatePaused = false;
         private bool _hkaBlendJobBuildPaused = false;
 
         private bool UnknownHookEnabled = false;
@@ -69,8 +67,6 @@ namespace PoseTest
 
         private Vector3 _currentRotations = Vector3.Zero;
         private hkQsTransform* _transformSpace = null;
-
-        private ulong _lastSetBoneModelSpaceSkeletonAddress = 0;
         
         private DalamudPluginInterface _pi;
         private CommandManager _commandManager;
@@ -122,12 +118,11 @@ namespace PoseTest
                 var getSkeletonPtr = scanner.ScanText("48 8B 01 4C 8B C9 4C 8B 41 08 48 8B 50 38 8B 40 30 8D 0C 40 85 C9 74 1C 0F 1F 84 00");
                 _setToReferencePoseHook = Hook<SetToReferencePosePrototype>.FromAddress(getSkeletonPtr, (SetToReferencePosePrototype) SetToReferencePoseDetour);
                 
-                // ExecuteSampleBlendJob?
                 var executeSampleBlendJobPtr = scanner.ScanText("48 8B C4 55 57 48 8D 68 98 48 81 EC ?? ?? ?? ?? 66 83 79 ?? ?? 48 8B F9 0F 84 ?? ?? ?? ?? 8B 0D");
                 _executeSampleBlendJobHook = Hook<ExecuteSampleBlendJobPrototype>.FromAddress(executeSampleBlendJobPtr, (ExecuteSampleBlendJobPrototype) ExecuteSampleBlendJobDetour);
 
-                var skeletonUpdaterJobFuncPtr = scanner.ScanText("48 89 4C 24 ?? 53 56 57 41 57");
-                _skeletonUpdaterJobFuncHook = Hook<SkeletonUpdaterJobFunc>.FromAddress(skeletonUpdaterJobFuncPtr, (SkeletonUpdaterJobFunc) SkeletonUpdaterJobFuncDetour);
+                var skeletonUpdaterUpdate = scanner.ScanText("48 89 4C 24 ?? 53 56 57 41 57");
+                _skeletonUpdaterUpdateHook = Hook<SkeletonUpdaterUpdate>.FromAddress(skeletonUpdaterUpdate, (SkeletonUpdaterUpdate) SkeletonUpdaterUpdateDetour);
 
                 var hkaBlendJobBuildPtr = scanner.ScanText("E8 ?? ?? ?? ?? 4C 8B BC 24 ?? ?? ?? ?? EB 02");
                 _hkaBlendJobBuildHook = Hook<HkaBlendJobBuild>.FromAddress(hkaBlendJobBuildPtr, (HkaBlendJobBuild) HkaBlendJobBuildDetour);
@@ -147,37 +142,24 @@ namespace PoseTest
             return _hkaBlendJobBuildHook.Original(job, skel, bonesout, floatsout, converttomodel, 0, 0);
         }
 
-        private void SkeletonUpdaterJobFuncDetour(void* updater, void* job)
+        private void SkeletonUpdaterUpdateDetour(void* updater, void* job)
         {
             // noppypoo
         }
 
         private void ExecuteSampleBlendJobDetour(void* job)
         {
-            // Do nothing to avoid the local pose updating its (blended) animation
+            
         }
 
-        // private void* UnknownDetour(void* unknown)
-        // {
-        //     var ret = UnknownHook.Original(unknown);
-        //     PluginLog.Log($"UnknownDetour({(ulong) unknown:X}) = {(ulong) ret:X}");
-        //     return ret;
-        // }
-        
         private hkaSkeleton* SetToReferencePoseDetour(ref hkaPose pose)
         {
-            // The original function will for some reason attempt to sync/modify local space
-            // so we'll just return the skeleton address as expected
-            var hkaSkl = pose.SkeletonPointer;
-            return hkaSkl;
+            return pose.SkeletonPointer;
         }
 
         private void SyncModelSpaceDetour(ref hkaPose pose)
         {
-            // Do nothing so the pose will not sync
             
-            // PluginLog.Log($"UnknownDetour: {(ulong) alsoUnknown:X}");
-            // UnknownHook.Original(alsoUnknown);
         }
         
         private void SyncLocalSpaceDetour(ref hkaPose pose)
@@ -187,30 +169,13 @@ namespace PoseTest
 
         private hkQsTransform* CalculateBoneModelSpaceDetour(ref hkaPose pose, int boneIdx)
         {
-            // The original function will attempt to sync poses between spaces
-            // so we'll just return the bone's model space transform address as expected
             var boneTransformPtr = pose.ModelPose.Data;
             return boneTransformPtr + boneIdx;
         }
 
-        // private IntPtr SetBoneXSpaceDetour(void* thisRenderSkeleton, ushort boneId, ref hkQsTransform transform, bool enableSecondary, bool enablePropagate)
         private ulong SetBoneModelSpaceFfxivDetour(PartialSkeleton* partialSkeletons, ushort boneId, hkQsTransform* transform, bool enableSecondary, bool enablePropagate)
         {
-            _lastSetBoneModelSpaceSkeletonAddress = (ulong) partialSkeletons;
-            // var boneTransformPtr = pose.ModelPose.Data;
-            // return boneTransformPtr;// + boneIdx;
-            // var ret = _setBoneXSpaceHook.Original(thisRenderSkeleton, boneId, ref transform, enableSecondary, enablePropagate);
-            // var ret = _setBoneXSpaceHook.Original(thisRenderSkeleton, boneId, transform, enableSecondary, enablePropagate);
-            // PluginLog.Log($"{(ulong) thisRenderSkeleton:X} {boneId} ");
-            // PluginLog.Log($"{(ulong) thisRenderSkeleton:X} {boneId} {(ulong) transform:X} {enableSecondary} {enablePropagate} = {ret}");
-         
-            // Capture the transform memory space for us to use later
-            _transformSpace = transform;
-            
-            // Return the bone id
-            // Since this function operates on the RenderSkeleton, this is not a Havok function
-            var ret = (ulong) boneId;
-            return ret;
+            return boneId;
         }
 
         public void Dispose()
@@ -227,8 +192,8 @@ namespace PoseTest
             _setToReferencePoseHook.Dispose();
             _executeSampleBlendJobHook.Disable();
             _executeSampleBlendJobHook.Dispose();
-            _skeletonUpdaterJobFuncHook?.Disable();
-            _skeletonUpdaterJobFuncHook?.Dispose();
+            _skeletonUpdaterUpdateHook?.Disable();
+            _skeletonUpdaterUpdateHook?.Dispose();
             _hkaBlendJobBuildHook?.Disable();
             _hkaBlendJobBuildHook?.Dispose();
             ui.Dispose();
@@ -292,33 +257,13 @@ namespace PoseTest
 
             ImGui.Begin("PoseTest", ref _uiVisible);
 
-            // if (ImGui.Checkbox("Pause all skeleton updates", ref _updatePaused))
-            // {
-            //     if (_updatePaused)
-            //     {
-            //         // _setBoneModelSpaceHook.Enable();
-            //         // _getBoneModelSpaceHook.Enable();
-            //         _syncAllHook.Enable();
-            //         // _getSkeletonHook.Enable();
-            //         _executeSampleBlendJobHook.Enable();
-            //     }
-            //     else
-            //     {
-            //         _setBoneModelSpaceHook.Disable();
-            //         _getBoneModelSpaceHook.Disable();
-            //         _syncAllHook.Disable();
-            //         _getSkeletonHook.Disable();
-            //         _executeSampleBlendJobHook.Disable();
-            //     }
-            // }
-            
             var calculateBoneModelSpaceText = _calculateBoneModelSpacePaused ? "Unpause CalculateBoneModelSpace" : "Pause CalculateBoneModelSpace";
             var setBoneModelSpaceFfxivText = _setBoneModelSpaceFfxivPaused ? "Unpause SetBoneModelSpaceFfxiv" : "Pause SetBoneModelSpaceFfxiv";
             var syncModelSpaceText = _syncModelSpacePaused ? "Unpause SyncModelSpace" : "Pause SyncModelSpace";
             var syncLocalSpaceText = _syncLocalSpacePaused ? "Unpause SyncLocalSpace" : "Pause SyncLocalSpace";
             var setToReferencePoseText = _setToReferencePosePaused ? "Unpause SetToReferencePose" : "Pause SetToReferencePose";
             var executeSampleBlendJobText = _executeSampleBlendJobPaused ? "Unpause ExecuteSampleBlendJob" : "Pause ExecuteSampleBlendJob";
-            var skeletonUpdaterJobFuncText = _skeletonUpdaterJobFuncPaused ? "Unpause SkeletonUpdaterJobFunc" : "Pause SkeletonUpdaterJobFunc";
+            var skeletonUpdaterUpdateText = _skeletonUpdaterUpdatePaused ? "Unpause SkeletonUpdaterUpdate" : "Pause SkeletonUpdaterUpdate";
             var hkaBlendJobBuildText = _hkaBlendJobBuildPaused ? "Unpause HkaBlendJobBuild" : "Pause HkaBlendJobBuild";
 
             if (ImGui.Button(calculateBoneModelSpaceText))
@@ -405,17 +350,17 @@ namespace PoseTest
                 }
             }
             
-            if (ImGui.Button(skeletonUpdaterJobFuncText))
+            if (ImGui.Button(skeletonUpdaterUpdateText))
             {
-                if (_skeletonUpdaterJobFuncPaused)
+                if (_skeletonUpdaterUpdatePaused)
                 {
-                    _skeletonUpdaterJobFuncHook.Disable();
-                    _skeletonUpdaterJobFuncPaused = false;
+                    _skeletonUpdaterUpdateHook.Disable();
+                    _skeletonUpdaterUpdatePaused = false;
                 }
                 else
                 {
-                    _skeletonUpdaterJobFuncHook.Enable();
-                    _skeletonUpdaterJobFuncPaused = true;
+                    _skeletonUpdaterUpdateHook.Enable();
+                    _skeletonUpdaterUpdatePaused = true;
                 }
             }
             
@@ -432,14 +377,6 @@ namespace PoseTest
                     _hkaBlendJobBuildPaused = true;
                 }
             }
-            
-            // if (ImGui.Checkbox("Enable UnknownHook", ref UnknownHookEnabled))
-            // {
-            //     if (UnknownHookEnabled)
-            //         _getSkeletonHook.Enable();
-            //     else
-            //         _getSkeletonHook.Disable();
-            // }
 
             ImGui.InputInt("idx", ref update);
             if (ImGui.Button("update"))
@@ -448,8 +385,6 @@ namespace PoseTest
                 var pose = *renderSkele->PartialSkeletons[_selectedPartialSkeleIndex].Pose1;
                 UpdateChildren(pose, (short) update);
             }
-            
-            ImGui.Text($"Last arg @ {_lastSetBoneModelSpaceSkeletonAddress:X}");
 
             if (ImGui.Selectable("Deselect"))
             {
@@ -471,7 +406,6 @@ namespace PoseTest
                 ImGui.SameLine();
                 ClipboardTooltip($"{(ulong) thisRenderSkele:X}", "Copy Actor RenderSkeleton address");
                 ImGui.SameLine();
-                // ImGui.Text($"{actor.Address.ToInt64():X}:{(ulong) thisRenderSkele:X} - {actor.ObjectKind} - {actor.Name} - X{actor.Position.X} Y{actor.Position.Y} Z{actor.Position.Z} R{actor.Rotation}");
                 ImGui.Text($" - {actor.ObjectKind} - {actor.Name} - X{actor.Position.X} Y{actor.Position.Y} Z{actor.Position.Z} R{actor.Rotation}");
                 if (thisRenderSkele != null && thisRenderSkele->PartialSkeletons != null)
                 {
@@ -507,13 +441,6 @@ namespace PoseTest
                 _selectedBoneIndex = uint.MaxValue;
             }
 
-            // if (renderSkele != _lastRenderSkele)
-            // {
-            //     _lastRenderSkele = renderSkele;
-            //     _selectedPartialSkeleIndex = -1;
-            //     _selectedBoneIndex = -1;
-            // }
-
             ImGui.End();
 
             if (_selectedActorId != uint.MaxValue && _selectedPartialSkeleIndex != uint.MaxValue)
@@ -542,14 +469,6 @@ namespace PoseTest
                     var t = (ulong) (pose->ModelPose).Data + (48 * _selectedBoneIndex);
                     ClipboardText($"Bone transform: {t:X}", $"{t:X}");
                     
-                    // if (ImGui.SliderFloat("X", ref boneTransform.Rotation.x, -1.5f, 1.5f, "%.2f"))
-                    //     pose->ModelPose[_selectedBoneIndex] = boneTransform;
-                    // if (ImGui.SliderFloat("Y", ref boneTransform.Rotation.y, -1.5f, 1.5f, "%.2f"))
-                    //     pose->ModelPose[_selectedBoneIndex] = boneTransform;
-                    // if (ImGui.SliderFloat("Z", ref boneTransform.Rotation.z, -1.5f, 1.5f, "%.2f"))
-                    //     pose->ModelPose[_selectedBoneIndex] = boneTransform;
-                    // if (ImGui.SliderFloat("W", ref boneTransform.Rotation.w, -1.5f, 1.5f, "%.2f"))
-                    //     pose->ModelPose[_selectedBoneIndex] = boneTransform;
 
                     // var initRot = PoseMath.FromQ(new Quaternion(boneTransform.Rotation.x, boneTransform.Rotation.y, boneTransform.Rotation.z, boneTransform.Rotation.w));
                     _currentRotations = PoseMath.FromQ(new Quaternion(boneTransform.Rotation.x, boneTransform.Rotation.y, boneTransform.Rotation.z, boneTransform.Rotation.w));
@@ -630,23 +549,15 @@ namespace PoseTest
                         _currentRotations = PoseMath.FromQ(new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w));
                         PluginLog.Log($"quat: {rotation.x:F2}, {rotation.y:F2}, {rotation.z:F2}, {rotation.w:F2}");
                         PluginLog.Log($"rot: {_currentRotations.X:F2}, {_currentRotations.Y:F2}, {_currentRotations.Z:F2}");
-                        
-                        // _currentRotations = PoseMath.FromQ2(new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w));
-                        // _currentRotations = new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w).ComputeAngles();
-                        // if (_currentRotations.X < 0)
-                        //     _currentRotations.X += 360;
-                        // if (_currentRotations.Y < 0)
-                        //     _currentRotations.Y += 360;
-                        // if (_currentRotations.Z < 0)
-                        //     _currentRotations.Z += 360;
                     }
                         
                 }
 
-                if (_selectedBoneIndex != uint.MaxValue)
-                {
-                    DrawBone(pose->ModelPose[_selectedBoneIndex].Translation, selectedSkl->Bones[_selectedBoneIndex].GetName());
-                }
+                // it aint work
+                // if (_selectedBoneIndex != uint.MaxValue)
+                // {
+                //     DrawBone(pose->ModelPose[_selectedBoneIndex].Translation, selectedSkl->Bones[_selectedBoneIndex].GetName());
+                // }
 
                 ImGui.EndChild();
 
@@ -700,38 +611,17 @@ namespace PoseTest
 
             if (!_gameGui.WorldToScreen(coords, out var pos)) return;
 
-            // ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(1, 0, 1, 1));
             ImGui.SetNextWindowSize(new Vector2(120, 30), ImGuiCond.Always);
             ImGui.SetNextWindowPos(new Vector2(pos.X, pos.Y));
             ImGui.Begin("##fejwofije", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoMouseInputs | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoScrollbar);
             ImGui.Text(name);
             ImGui.End();
-            // ImGui.PopStyleColor();
         }
-
-        // private Quaternion FromEuler()
-        // {
-        //     
-        // }
-        //
-        // private Vector3 ToEuler(SharpDX.Quaternion q)
-        // {
-        //     
-        // }
-
+        
         private void DrawTooltip(string fmt)
         {
             ImGui.BeginTooltip();
             ImGui.Text(fmt);
-            ImGui.EndTooltip();
-        }
-
-        private unsafe void DrawSkeleTooltip(hkaSkeleton* skl)
-        {
-            ImGui.BeginTooltip();
-            // for (int i = 0; i < skl->Bones.Length; i++)
-            //     ImGui.Text($"{skl->Bones[i]}");
-            ImGui.Text($"{*skl}");
             ImGui.EndTooltip();
         }
     }
