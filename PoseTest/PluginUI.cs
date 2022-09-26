@@ -9,7 +9,7 @@ namespace PoseTest
     class PluginUI : IDisposable
     {
         private Configuration _configuration;
-        private Plugin _plugin;
+        private PoseTestPlugin _plugin;
 
         private bool _render;
 
@@ -29,7 +29,7 @@ namespace PoseTest
         }
 
         // passing in the image here just for simplicity
-        public PluginUI(Configuration configuration, Plugin plugin)
+        public PluginUI(Configuration configuration, PoseTestPlugin plugin)
         {
             _configuration = configuration;
             _plugin = plugin;

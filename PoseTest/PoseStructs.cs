@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
-using Dalamud.Game.ClientState.Actors.Types;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable FieldCanBeMadeReadOnly.Global
@@ -21,12 +20,12 @@ namespace PoseTest
         [FieldOffset(80)] public short PartialSkeletonNum;
         [FieldOffset(104)] public PartialSkeleton* PartialSkeletons;
 
-        public static RenderSkeleton* FromActor(Actor p)
+        public static RenderSkeleton* FromActor(GameObject* p)
         {
-            if (p.Address == IntPtr.Zero) return null;
-            var drawObject = Marshal.ReadIntPtr(p.Address, ActorDrawObjectOffset);
-            if (drawObject == IntPtr.Zero) return null;
-            var renderSkele = Marshal.ReadIntPtr(drawObject, DrawObjectSkeletonOffset);
+            if (p == null) return null;
+            var drawObject = p->DrawObject;
+            if (drawObject == null) return null;
+            var renderSkele = Marshal.ReadIntPtr((IntPtr) drawObject, DrawObjectSkeletonOffset);
             if (renderSkele == IntPtr.Zero) return null;
             return (RenderSkeleton*) renderSkele.ToPointer();
         }
@@ -151,6 +150,12 @@ namespace PoseTest
         private int CapacityAndFlags;
 
         public T this[int index]
+        {
+            get => Data[index];
+            set => Data[index] = value;
+        }
+        
+        public T this[uint index]
         {
             get => Data[index];
             set => Data[index] = value;
